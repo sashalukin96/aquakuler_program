@@ -10,30 +10,34 @@ from PyQt6 import QtWidgets, QtCore
 from PyQt6.QtCore import *
 from PyQt6.QtCore import Qt
 
-from FormFilterClient import Ui_Form_Filter_Client
-from FormFilterStaff import Ui_Form_Filter_Staff
-from FormFilterZakaz import Ui_Form_Filter_Zakaz
-from FormInsertClient import Ui_Form_Client
-from FormInsertOffcial import Ui_Form_Official
-from FormInsertProduct import Ui_Form_Product
-from FormInsertStaff import Ui_Form_Staff
-from FormInsertZakaz import Ui_Form_Insert_Zakaz
-from FormProductInZakaz import Ui_Form_Product_In_Zakaz
-from FormShowZakaz import Ui_Form_Show_Zakaz
-from FormUpdateClient import Ui_Form_Update_Client
-from FormUpdateOffcial import Ui_Form_Update_Official
-from FormUpdateProduct import Ui_Form_Update_Product
-from FormUpdateStaff import Ui_Form_Update_Staff
-from FormUpdateZakaz import Ui_Form_Update_Zakaz
-from Main import Ui_Main
-from Staff import Ui_Staff
-from client import Ui_client
-from official import Ui_official
-from products import Ui_products
+from Forms.FormFilterClient import Ui_Form_Filter_Client
+from Forms.FormFilterStaff import Ui_Form_Filter_Staff
+from Forms.FormFilterZakaz import Ui_Form_Filter_Zakaz
+from Forms.FormInsertClient import Ui_Form_Client
+from Forms.FormInsertOffcial import Ui_Form_Official
+from Forms.FormInsertProduct import Ui_Form_Product
+from Forms.FormInsertStaff import Ui_Form_Staff
+from Forms.FormInsertZakaz import Ui_Form_Insert_Zakaz
+from Forms.FormProductInZakaz import Ui_Form_Product_In_Zakaz
+from Forms.FormShowZakaz import Ui_Form_Show_Zakaz
+from Forms.FormUpdateClient import Ui_Form_Update_Client
+from Forms.FormUpdateOffcial import Ui_Form_Update_Official
+from Forms.FormUpdateProduct import Ui_Form_Update_Product
+from Forms.FormUpdateStaff import Ui_Form_Update_Staff
+from Forms.FormUpdateZakaz import Ui_Form_Update_Zakaz
+from windows.Main import Ui_Main
+from windows.Staff import Ui_Staff
+from windows.client import Ui_client
+from windows.official import Ui_official
+from windows.products import Ui_products
 from dotenv import load_dotenv
 
-from Report_zakaz import Generator
-from zakaz import Ui_zakaz
+from Report.Report_zakaz import Generator
+from windows.zakaz import Ui_zakaz
+
+from sqlalchemy import func, insert, select, delete, update
+from database.db import Base, engine, SessionLocal
+from database.models import Post, Product, Staff, Order, Client, ListOrderedGoods
 
 
 # Функция для подключения к БД
@@ -53,8 +57,11 @@ def dbconnect():
         print("Ошибка при работе с PostgreSQL", error)
         exit()
 
+
 # Путь до корневой папки
 basedir = os.path.dirname(__file__)
+
+# ------ Классы в которых происходит все заимодействие ----
 
 # Класс отображения данных в таблицы приложения
 class TableModel(QAbstractTableModel):
@@ -824,7 +831,7 @@ class OffcialWindow(QtWidgets.QMainWindow, Ui_official):
         self.pushButton_4.clicked.connect(self.hide)
         self.pushButton_5.clicked.connect(self.hide)
         # Подключения функций к кнопкам на формах
-        self.FormInsert.pushButton.clicked.connect(self.Inser)
+        self.FormInsert.pushButton.clicked.connect(self.Insert)
         self.FormUpdate.pushButton.clicked.connect(self.Update)
 
     # Функция вывода данных в таблицу из базы данных
@@ -833,14 +840,13 @@ class OffcialWindow(QtWidgets.QMainWindow, Ui_official):
             self.tableView.model().index(self.tableView.currentIndex().row(), 1).data())
 
     # Функция добавления записи в базу данных
-    def Inser(self):
-        cursor.execute('''select max(Код_должности) from Должность''')
-        self.max = cursor.fetchall()[0][0] + 1
+    def Insert(self):
+        db = SessionLocal()
         self.data = self.FormInsert.textEdit.toPlainText()
         if self.data != "":
-            self.query = "INSERT INTO Должность (Код_должности, Наименование_должности) VALUES ( %s, %s) "
-            self.value = (self.max, self.data)
-            cursor.execute(self.query, self.value)
+            stmp = insert(Post).values(name_post=self.data)
+            db.execute(stmp)
+            db.commit()
             self.loaddata()
             self.FormInsert.textEdit.setPlainText("")
             self.FormInsert.hide()
@@ -850,15 +856,18 @@ class OffcialWindow(QtWidgets.QMainWindow, Ui_official):
 
     # Функция удаления записи из базы данных
     def Delete(self):
-        cursor.execute(f" SELECT  count(Код_должности) FROM Должность ")
-        self.count_offcial = cursor.fetchall()[0][0]
+        with engine.connect() as conn:
+            query = select(func.count(Post.id_post))
+            self.count_offcial = conn.execute(query).scalar()
         self.value = int(self.tableView.model().index(self.tableView.currentIndex().row(), 0).data())
-        self.query = "DELETE FROM Должность WHERE Код_должности = '%s'" % (self.value)
-        button = QMessageBox.question(self, "Сообщение","Вы действительно хотите удалить запись?")
 
+        button = QMessageBox.question(self, "Сообщение","Вы действительно хотите удалить запись?")
         if button == QMessageBox.StandardButton.Yes:
             try:
-                cursor.execute(self.query)
+                with engine.connect() as conn:
+                    self.query = delete(Post).where(Post.id_post == self.value)
+                    conn.execute(self.query)
+                    conn.commit()
                 if self.count_offcial > 1:
                     self.loaddata()
                 elif self.count_offcial == 1:
@@ -874,10 +883,12 @@ class OffcialWindow(QtWidgets.QMainWindow, Ui_official):
     def Update(self):
         self.id = self.tableView.model().index(self.tableView.currentIndex().row(), 0).data()
         if self.FormUpdate.textEdit.toPlainText() != "":
-            self.query_update = (
-                f"update Должность set Наименование_должности = '{self.FormUpdate.textEdit.toPlainText()}' "
-                f"where Код_должности = {self.id}")
-            cursor.execute(self.query_update)
+            with engine.connect() as conn:
+                self.query_update = update(Post).values(
+                    name_post = self.FormUpdate.textEdit.toPlainText()
+                ).where(Post.id_post == self.id)
+                conn.execute(self.query_update)
+                conn.commit()
             self.loaddata()
             self.FormUpdate.hide()
         else:
@@ -892,11 +903,13 @@ class OffcialWindow(QtWidgets.QMainWindow, Ui_official):
 
     # Функция вывода данных в таблицу из базы данных
     def loaddata(self):
-        cursor.execute('select * from Должность order by Код_должности')
-        data = cursor.fetchall()
+        with engine.connect() as conn:
+            query = select(Post).order_by(Post.id_post)
+            data = conn.execute(query).all()
         new_data = []
         for dat in data:
-            dat =  dat + (' ',)
+            dat = tuple(dat)
+            dat =  dat + (" ",)
             new_data.append(dat)
         if new_data == []:
             pass
@@ -1375,6 +1388,9 @@ class ZakazWindow(QtWidgets.QMainWindow, Ui_zakaz):
             if answer == QMessageBox.StandardButton.Yes:
                 self.close()
 
+# ------ Конец взаимодествия с классами ----
+
+# ------- Добавление форм без редактирования кода -------
 
 # Работа с формой добавления должности
 class FormInserOffcialWindow(QtWidgets.QWidget, Ui_Form_Official):
