@@ -37,6 +37,7 @@ class Staff(Base):
 	full_name : Mapped[str]
 	address_staff : Mapped[str]
 	passport : Mapped[str]
+	phone: Mapped[int]
 	id_post : Mapped[int] = mapped_column(ForeignKey("Должности.id_post"))
 
 
@@ -51,8 +52,8 @@ class ListOrderedGoods(Base):
 	__tablename__ = "Список заказанных товаров"
 
 	id_list : Mapped[intpk]
-	id_product : Mapped[int] = mapped_column(ForeignKey("Товары.id_product"))
-	id_order : Mapped[int] = mapped_column(ForeignKey("Заказы.id_order"))
+	id_product : Mapped[int] = mapped_column(ForeignKey("Товары.id_product", ondelete="CASCADE"))
+	id_order : Mapped[int] = mapped_column(ForeignKey("Заказы.id_order", ondelete="CASCADE"))
 	count_product : Mapped[int]
 
 

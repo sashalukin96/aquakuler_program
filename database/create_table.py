@@ -1,8 +1,7 @@
 import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from sqlalchemy import func, insert
-from database.db import Base, engine, SessionLocal
+from database.db import Base, engine
 from database.models import Post, Product, Staff, Order, Client, ListOrderedGoods
 
 

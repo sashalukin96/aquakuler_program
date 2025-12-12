@@ -218,13 +218,25 @@ class StaffWindow(QtWidgets.QMainWindow, Ui_Staff):
 
     # Функция вывода данных в таблицу из базы данных
     def loaddata(self):
-        cursor.execute('''SELECT "Код_сотрудника", ФИО, Адрес, Паспорт, Телефон, "Наименование_должности"
-                                    FROM Должность INNER JOIN Сотрудники ON Должность."Код_должности" = Сотрудники."Код_должности"
-                                    order by Код_сотрудника''')
-        data = cursor.fetchall()
+        # cursor.execute('''SELECT "Код_сотрудника", ФИО, Адрес, Паспорт, Телефон, "Наименование_должности"
+        #                                     FROM Должность INNER JOIN Сотрудники ON Должность."Код_должности" = Сотрудники."Код_должности"
+        #                                     order by Код_сотрудника''')
+        with engine.connect() as conn:
+            query = select(
+                Staff.id_staff,
+                Staff.full_name,
+                Staff.address_staff,
+                Staff.passport,
+                Staff.phone,
+                Post.name_post
+            ).join(
+                Post, Staff.id_post == Post.id_post
+            ).order_by(Staff.id_staff)
+            data = conn.execute(query).all()
         header = ["Код сотрудника", "ФИО", "Адрес", "Паспорт", "Телефон", "Должность", " "]
         new_data = []
         for dat in data:
+            dat = tuple(dat)
             dat =  dat + (' ',)
             new_data.append(dat)
         if new_data == []:
@@ -286,19 +298,22 @@ class StaffWindow(QtWidgets.QMainWindow, Ui_Staff):
 
     # Функция для заполнения выпадающего списка должность
     def comboBoxStaff(self):
-        cursor.execute('''select Наименование_должности FROM Должность''')
+        with engine.connect() as conn:
+            querty = select(Post.name_post)
+            data_post = conn.execute(querty).all()
         data_staff = []
-        for i in cursor.fetchall():
+        for i in data_post:
             data_staff += [i[0], ]
         self.FormInsert.comboBox.addItems(data_staff)
 
     # Функция вывода данных в таблицу из базы данных в форме фильтр
     def comboBoxStaffFilter(self):
-        cursor.execute('''select Наименование_должности 
-        FROM Должность''')
+        with engine.connect() as conn:
+            query = select(Post)
+            data_post = conn.execute(query).all()
         data_staff = []
-        for i in cursor.fetchall():
-            data_staff += [i[0], ]
+        for i in data_post:
+            data_staff += [i[1], ]
         self.FormFilter.comboBox.addItems(data_staff)
 
     # Функция для проверки какой тип фильтрации выбран
@@ -310,22 +325,31 @@ class StaffWindow(QtWidgets.QMainWindow, Ui_Staff):
 
     # Функция добавления записи в базу данных
     def Inser(self, index):
-        cursor.execute('''select max(Код_сотрудника) from Сотрудники''')
-        self.id = cursor.fetchall()[0][0] + 1
         if self.FormInsert.textEdit.toPlainText() != "":
             self.name = self.FormInsert.textEdit.toPlainText()
             if self.FormInsert.textEdit_2.toPlainText() != "":
                 self.adress = self.FormInsert.textEdit_2.toPlainText()
                 if self.FormInsert.textEdit_3.toPlainText() != "":
                     self.pasport = self.FormInsert.textEdit_3.toPlainText()
-                    self.query_staff = "select Код_должности from Должность where Наименование_должности = '%s'" % (self.FormInsert.comboBox.currentText())
-                    cursor.execute(self.query_staff)
-                    self.official = cursor.fetchall()[0][0]
+                    with (engine.connect() as conn):
+                        self.query_staff = select(Post).where(
+                            Post.name_post == self.FormInsert.comboBox.currentText()
+                        )
+                        self.official = conn.execute(self.query_staff).scalar()
+
                     try:
                         self.phone = int(self.FormInsert.textEdit_4.toPlainText())
-                        self.query = "INSERT INTO Сотрудники (Код_сотрудника, ФИО, Адрес, Паспорт, Телефон, Код_должности) VALUES ( %s, %s, %s, %s, %s, %s) "
-                        self.value = (self.id, self.name, self.adress, self.pasport, self.phone, self.official)
-                        cursor.execute(self.query, self.value)
+                        with engine.connect() as conn:
+                            self.query = insert(Staff).values(
+                                full_name = self.name,
+                                address_staff = self.adress,
+                                passport = self.pasport,
+                                phone = self.phone,
+                                id_post = self.official
+                            )
+                            conn.execute(self.query)
+                            conn.commit()
+
                         self.loaddata()
                         self.FormInsert.textEdit.setPlainText("")
                         self.FormInsert.textEdit_2.setPlainText("")
@@ -382,15 +406,25 @@ class StaffWindow(QtWidgets.QMainWindow, Ui_Staff):
 
     # Функция фильтрации по полю ФИО
     def Filter_Name(self):
-        self.query_filter = (f"SELECT Код_сотрудника, ФИО, Адрес, Паспорт, Телефон, Наименование_должности "
-                             f"FROM Должность INNER JOIN Сотрудники ON Должность.Код_должности = Сотрудники.Код_должности "
-                             f"WHERE ФИО LIKE '%{self.FormFilter.textEdit.toPlainText()}%'"
-                             f" order by Код_сотрудника;")
-        cursor.execute(self.query_filter)
-        data = cursor.fetchall()
+        with (engine.connect() as conn):
+            query = select(
+                Staff.id_staff,
+                Staff.full_name,
+                Staff.address_staff,
+                Staff.passport,
+                Staff.phone,
+                Post.name_post
+            ).join(
+                Post, Staff.id_post == Post.id_post
+            ).where(
+                Staff.full_name.like(f'%{self.FormFilter.textEdit.toPlainText()}%')
+            ).order_by(Staff.id_staff)
+            data = conn.execute(query).all()
+
         header = ["Код сотрудника", "ФИО", "Адрес", "Паспорт", "Телефон", "Должность", " "]
         new_data = []
         for dat in data:
+            dat = tuple(dat)
             dat = dat + (' ',)
             new_data.append(dat)
         if new_data == []:
@@ -403,15 +437,25 @@ class StaffWindow(QtWidgets.QMainWindow, Ui_Staff):
 
     # Функция фильтрации по полю Должность
     def Filter_Offcial(self):
-        self.query_filter = (f"SELECT Код_сотрудника, ФИО, Адрес, Паспорт, Телефон, Наименование_должности "
-                             f"FROM Должность INNER JOIN Сотрудники ON Должность.Код_должности = Сотрудники.Код_должности "
-                             f"WHERE Наименование_должности LIKE '%{self.FormFilter.comboBox.currentText()}%'"
-                             f" order by Код_сотрудника;")
-        cursor.execute(self.query_filter)
-        data = cursor.fetchall()
+        with (engine.connect() as conn):
+            query = select(
+                Staff.id_staff,
+                Staff.full_name,
+                Staff.address_staff,
+                Staff.passport,
+                Staff.phone,
+                Post.name_post
+            ).join(
+                Post, Staff.id_post == Post.id_post
+            ).where(
+                Post.name_post.like(f'%{self.FormFilter.comboBox.currentText()}%')
+            ).order_by(Staff.id_staff)
+            data = conn.execute(query).all()
+
         header = ["Код сотрудника", "ФИО", "Адрес", "Паспорт", "Телефон", "Должность", " "]
         new_data = []
         for dat in data:
+            dat = tuple(dat)
             dat = dat + (' ',)
             new_data.append(dat)
         if new_data == []:
